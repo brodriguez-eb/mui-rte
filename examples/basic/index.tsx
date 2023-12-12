@@ -1,17 +1,12 @@
-import React from 'react'
-import MUIRichTextEditor from '../../'
+import React from "react";
+import MUIRichTextEditor from "../../";
 
 const save = (data: string) => {
-    console.log(data)
-}
+  console.log(data);
+};
 
 const Basic = () => {
-    return (
-        <MUIRichTextEditor
-            label="Type something here..."
-            onSave={save}
-        />
-    )
-}
+  return <MUIRichTextEditor label="Description" onSave={save} />;
+};
 
-export default Basic
+export default Basic;
