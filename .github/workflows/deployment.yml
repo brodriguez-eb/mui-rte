@@ -1,0 +1,62 @@
+name: Deployment
+
+on:
+  push:
+    branches: [master]
+
+env:
+  node-version: 16.x
+  tenant: "atlas"
+  package-name: "themes"
+
+jobs:
+  nexus-deployment:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ env.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ env.node-version }}
+
+      - name: Import Secrets from Vault
+        uses: hashicorp/vault-action@v2.2.0
+        with:
+          url: https://vault.theatlastango.tools
+          method: approle
+          roleId: ${{ secrets.atlas_vault_role_Id }}
+          secretId: ${{ secrets.atlas_vault_secret_Id }}
+          secrets: |
+            /atlas/nexus eb_deployer_user | NEXUS_USER ;
+            /atlas/nexus eb_deployer_pass | NEXUS_PASS
+
+      # bump version
+      - name: Application Version
+        id: version
+        uses: paulhatch/semantic-version@v4.0.2
+        with:
+          tag_prefix: "v"
+          minor_pattern: "RELEASE_MINOR"
+          major_pattern: "RELEASE_MAJOR"
+          format: "${major}.${minor}.${patch}"
+          bump_each_commit: true
+
+      - name: Bump version placeholder in package.json
+        uses: jacobtomlinson/gha-find-replace@v1
+        with:
+          find: '"version": "[0-9]+\.[0-9]+\.[0-9]+(\-\w+\.)?([0-9]+)?"'
+          replace: '"version": "${{ steps.version.outputs.version }}"'
+          include: "package.json"
+
+      - run: npm install
+      - run: npm run build
+      - run: npm pack
+
+      - name: Deploy package to nexus
+        run: |
+          curl -u ${{ env.NEXUS_USER }}:${{ env.NEXUS_PASS }} -X POST "https://nexus.theatlastango.tools/service/rest/v1/components?repository=npm-hosted" -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "npm.asset=@${{env.tenant}}-ui-${{env.package-name}}-${{ steps.version.outputs.version }}.tgz;type=application/x-compressed"
